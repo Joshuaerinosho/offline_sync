@@ -1,0 +1,35 @@
+name: offline_sync
+description: "A package designed to manage and synchronize data offline-first, ensuring seamless functionality independent of internet connectivity, with automatic syncing upon restoration of connection."
+version: 0.0.1
+homepage:
+
+environment:
+  sdk: '>=3.4.3 <4.0.0'
+  flutter: ">=1.17.0"
+
+dependencies:
+  connectivity_plus: ^6.0.3
+  encrypt: ^5.0.3
+  flutter:
+    sdk: flutter
+  http: ^1.2.1
+  path: ^1.9.0
+  shared_preferences: ^2.2.3
+  sqflite: ^2.3.3+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  mockito: ^5.3.2
+  build_runner: ^2.3.3
+  test: ^1.21.1
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # To add assets to your package, add an assets section, like this:
+  # assets:
+  #   - images/a_dot_burr.jpeg
+  #   - images/a_dot_ham.jpeg
+  #
