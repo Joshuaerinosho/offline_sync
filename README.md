@@ -1,39 +1,121 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# OfflineSync
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/guides/libraries/writing-package-pages).
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-library-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/developing-packages).
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+OfflineSync is a Flutter package that provides offline-first data management and synchronization. It ensures smooth functionality even without an internet connection and syncs data once connectivity is restored.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+- Local data storage and retrieval
+- Automatic synchronization with server when online
+- Conflict resolution
+- Encryption of sensitive data
+- Batch syncing for improved performance
+- Error handling and retry mechanisms
 
-## Getting started
+## Installation
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+Add this to your package's `pubspec.yaml` file:
+
+```yaml
+dependencies:
+  offline_sync: ^1.0.0
+```
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+## Initialization
+First, initialize the OfflineSync instance in your app:
 
 ```dart
-const like = 'sample';
+import 'package:offline_sync/offline_sync.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final offlineSync = OfflineSync();
+  await offlineSync.initialize();
+  runApp(MyApp());
+}
 ```
 
-## Additional information
+## Saving Data
+To save data locally and queue it for syncing:
+```dart
+final offlineSync = OfflineSync();
+await offlineSync.saveLocalData('user_1', {
+  'name': 'John Doe',
+  'email': 'john@example.com',
+  'age': 30,
+});
+```
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+## Reading Data
+To read locally stored data:
+```dart
+final userData = await offlineSync.readLocalData('user_1');
+if (userData != null) {
+  print('User name: ${userData['name']}');
+} else {
+  print('User not found');
+}
+```
+
+## Syncing with Server
+The package automatically syncs data when an internet connection is available. However, you can manually trigger a sync:
+
+```dart
+try {
+  await offlineSync.updateFromServer();
+  print('Data updated from server successfully');
+} catch (e) {
+  print('Failed to update from server: $e');
+}
+```
+
+## Handling Authentication
+Set the authentication token for API requests:
+
+```dart
+await offlineSync.setAuthToken('your_auth_token_here');
+```
+
+# Advanced Usage:
+## Conflict Resolution
+The package includes basic conflict resolution. You can customize this by extending the OfflineSync class:
+
+```dart
+class CustomOfflineSync extends OfflineSync {
+  @override
+  Future<Map<String, dynamic>> resolveConflict(
+    String id, 
+    Map<String, dynamic> localData, 
+    Map<String, dynamic> serverData
+  ) async {
+    // Implement your custom conflict resolution strategy here
+    // This example prefers local changes
+    final resolvedData = Map<String, dynamic>.from(serverData);
+    localData.forEach((key, value) {
+      if (value != serverData[key]) {
+        resolvedData[key] = value;
+      }
+    });
+    return resolvedData;
+  }
+}
+```
+
+## Batch Processing
+The package processes sync queue in batches. You can adjust the batch size:
+
+```dart
+class CustomOfflineSync extends OfflineSync {
+  @override
+  int get batchSize => 100; // Default is 50
+}
+```
+
+## Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+
+## License
+This project is licensed under the MIT License - see the LICENSE file for details.
+
