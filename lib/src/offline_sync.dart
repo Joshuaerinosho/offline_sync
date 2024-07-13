@@ -24,6 +24,8 @@ class OfflineSync {
   final _iv = encrypt.IV.fromLength(16);
   String? _authToken;
 
+  String _apiEndpoint = '';
+
   static const int _maxRetries = 3;
   static const int _batchSize = 50;
   static const int _currentSchemaVersion = 2;
@@ -59,10 +61,22 @@ class OfflineSync {
         _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
   }
 
+  // Getter for the current API endpoint
+  String get apiEndpoint => _apiEndpoint;
+
   Future<void> setAuthToken(String token) async {
     _authToken = token;
     await _sharedPreferences.setString(
         'auth_token', _encrypter.encrypt(token, iv: _iv).base64);
+  }
+
+  // Method to set custom API endpoint
+  void setApiEndpoint(String endpoint) {
+    if (endpoint.isNotEmpty) {
+      _apiEndpoint = endpoint;
+    } else {
+      throw ArgumentError('API endpoint cannot be empty');
+    }
   }
 
   Future<void> loadAuthToken() async {
@@ -164,12 +178,12 @@ class OfflineSync {
 
   Future<http.Response> _sendToServer(
       String action, Map<String, dynamic> data) async {
-    if (_authToken == null) {
-      throw Exception('Not authenticated');
+    if (_apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not set');
     }
 
     final response = await _httpClient.post(
-      Uri.parse('https://your-api-endpoint.com/$action'),
+      Uri.parse(_apiEndpoint),
       body: json.encode(data),
       headers: {
         'Content-Type': 'application/json',
@@ -218,12 +232,11 @@ class OfflineSync {
   }
 
   Future<void> updateFromServer() async {
-    if (_authToken == null) {
-      throw Exception('Not authenticated');
+    if (_apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not set');
     }
-
     final response = await _httpClient.get(
-      Uri.parse('https://your-api-endpoint.com/get_updates'),
+      Uri.parse(_apiEndpoint),
       headers: {
         'Authorization': 'Bearer $_authToken',
       },

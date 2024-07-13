@@ -36,6 +36,14 @@ void main() async {
 }
 ```
 
+## Setting Custom API Endpoint
+Set a custom endpoint for your specific server:
+
+```dart
+final offlineSync = OfflineSync();
+offlineSync.setApiEndpoint('https://your-custom-api.com');
+```
+
 ## Saving Data
 To save data locally and queue it for syncing:
 ```dart
