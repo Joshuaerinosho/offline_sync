@@ -13,9 +13,10 @@ import 'package:connectivity_plus_platform_interface/connectivity_plus_platform_
 import 'package:http/http.dart' as _i4;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i5;
+import 'package:offline_sync/src/offline_sync.dart' as _i12;
 import 'package:shared_preferences/shared_preferences.dart' as _i11;
+import 'package:sqflite/sqflite.dart' as _i2;
 import 'package:sqflite_common/sql.dart' as _i6;
-import 'package:sqflite_common/sqlite_api.dart' as _i2;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -989,4 +990,143 @@ class MockSharedPreferences extends _i1.Mock implements _i11.SharedPreferences {
         returnValue: _i3.Future<void>.value(),
         returnValueForMissingStub: _i3.Future<void>.value(),
       ) as _i3.Future<void>);
+}
+
+/// A class which mocks [OfflineSync].
+///
+/// See the documentation for Mockito's code generation for more information.
+class MockOfflineSync extends _i1.Mock implements _i12.OfflineSync {
+  MockOfflineSync() {
+    _i1.throwOnMissingStub(this);
+  }
+
+  @override
+  _i3.Future<void> initialize() => (super.noSuchMethod(
+        Invocation.method(
+          #initialize,
+          [],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> setAuthToken(String? token) => (super.noSuchMethod(
+        Invocation.method(
+          #setAuthToken,
+          [token],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> loadAuthToken() => (super.noSuchMethod(
+        Invocation.method(
+          #loadAuthToken,
+          [],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> addToSyncQueue(
+    String? action,
+    Map<String, dynamic>? data,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #addToSyncQueue,
+          [
+            action,
+            data,
+          ],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> syncData() => (super.noSuchMethod(
+        Invocation.method(
+          #syncData,
+          [],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<void> saveLocalData(
+    String? id,
+    Map<String, dynamic>? data,
+  ) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #saveLocalData,
+          [
+            id,
+            data,
+          ],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<Map<String, dynamic>?> readLocalData(String? id) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #readLocalData,
+          [id],
+        ),
+        returnValue: _i3.Future<Map<String, dynamic>?>.value(),
+      ) as _i3.Future<Map<String, dynamic>?>);
+
+  @override
+  _i3.Future<void> updateFromServer() => (super.noSuchMethod(
+        Invocation.method(
+          #updateFromServer,
+          [],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  _i3.Future<List<Map<String, dynamic>>> readAllLocalData() =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #readAllLocalData,
+          [],
+        ),
+        returnValue: _i3.Future<List<Map<String, dynamic>>>.value(
+            <Map<String, dynamic>>[]),
+      ) as _i3.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i3.Future<void> dispose() => (super.noSuchMethod(
+        Invocation.method(
+          #dispose,
+          [],
+        ),
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
+
+  @override
+  String encryptData(Map<String, dynamic>? data) => (super.noSuchMethod(
+        Invocation.method(
+          #encryptData,
+          [data],
+        ),
+        returnValue: _i5.dummyValue<String>(
+          this,
+          Invocation.method(
+            #encryptData,
+            [data],
+          ),
+        ),
+      ) as String);
 }
