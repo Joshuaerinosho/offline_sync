@@ -31,8 +31,6 @@ void main() {
   });
 
   test('Save and read local data', () async {
-    const action = 'create';
-
     final data = {
       'name': 'John Doe',
       'email': 'john@example.com',
@@ -53,8 +51,6 @@ void main() {
     final userData = await offlineSync.readLocalData('user_1');
 
     expect(userData, equals(data));
-
-    await offlineSync.addToSyncQueue(action, data);
 
     final databaseQuery = await mockDatabase.query('sync_queue');
 
