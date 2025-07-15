@@ -1,0 +1,20 @@
+name: offline_sync_example
+publish_to: "none"
+description: Example app for the offline_sync package
+version: 0.1.0
+
+environment:
+  sdk: ">=2.17.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  offline_sync:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -7,28 +7,64 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:math';
+
+class OfflineSyncConfig {
+  final String apiEndpoint;
+  final int batchSize;
+  final String? encryptionKey; // Now optional
+  final encrypt.IV? encryptionIV;
+  final Future<Map<String, dynamic>> Function(
+      String id,
+      Map<String, dynamic> localData,
+      Map<String, dynamic> serverData)? conflictResolver;
+  final void Function(String message)? logger;
+
+  const OfflineSyncConfig({
+    required this.apiEndpoint,
+    this.batchSize = 50,
+    this.encryptionKey,
+    this.encryptionIV,
+    this.conflictResolver,
+    this.logger,
+  });
+}
+
+enum SyncStatus { idle, syncing, success, error, offline }
+
+enum SyncErrorType { network, auth, server, unknown }
+
+class OfflineSyncException implements Exception {
+  final SyncErrorType type;
+  final String message;
+  OfflineSyncException(this.type, this.message);
+  @override
+  String toString() => 'OfflineSyncException($type): $message';
+}
 
 class OfflineSync {
-  static final OfflineSync _instance = OfflineSync._internal();
-  factory OfflineSync() => _instance;
-  OfflineSync._internal();
-
-  late Database _database;
-  late SharedPreferences _sharedPreferences;
-
-  Connectivity _connectivity = Connectivity();
-  http.Client _httpClient = http.Client();
-
+  late final Database _database;
+  late final SharedPreferences _sharedPreferences;
+  final Connectivity _connectivity;
+  final http.Client _httpClient;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  final _encrypter = encrypt.Encrypter(encrypt.AES(encrypt.Key.fromLength(32)));
-  final _iv = encrypt.IV.fromLength(16);
+  late final encrypt.Encrypter _encrypter;
+  late final encrypt.IV _iv;
   String? _authToken;
+  final OfflineSyncConfig config;
+  final ValueNotifier<SyncStatus> syncStatus = ValueNotifier(SyncStatus.idle);
+  final ValueNotifier<SyncErrorType?> lastError = ValueNotifier(null);
+  final ValueNotifier<double> syncProgress = ValueNotifier(0.0); // 0.0 to 1.0
 
-  String _apiEndpoint = '';
-
-  static const int _maxRetries = 3;
-  static const int _batchSize = 50;
   static const int _currentSchemaVersion = 2;
+  static const _encryptionKeyPrefsKey = 'offline_sync_encryption_key';
+
+  OfflineSync({
+    required this.config,
+    Connectivity? connectivity,
+    http.Client? httpClient,
+  })  : _connectivity = connectivity ?? Connectivity(),
+        _httpClient = httpClient ?? http.Client();
 
   Future<void> initialize() async {
     _database = await openDatabase(
@@ -57,12 +93,34 @@ class OfflineSync {
 
     _sharedPreferences = await SharedPreferences.getInstance();
 
+    // Handle encryption key
+    String? key = config.encryptionKey;
+    if (key == null) {
+      key = _sharedPreferences.getString(_encryptionKeyPrefsKey);
+      if (key == null) {
+        key = _generateRandomKey(32);
+        await _sharedPreferences.setString(_encryptionKeyPrefsKey, key);
+      }
+    }
+    _encrypter = encrypt.Encrypter(
+        encrypt.AES(encrypt.Key.fromUtf8(key.padRight(32).substring(0, 32))));
+    _iv = config.encryptionIV ?? encrypt.IV.fromLength(16);
+
     _connectivitySubscription =
         _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
   }
 
+  /// Generates a secure random string of [length] characters for encryption key.
+  String _generateRandomKey(int length) {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rand = Random.secure();
+    return List.generate(length, (_) => chars[rand.nextInt(chars.length)])
+        .join();
+  }
+
   // Getter for the current API endpoint
-  String get apiEndpoint => _apiEndpoint;
+  String get apiEndpoint => config.apiEndpoint;
 
   Future<void> setAuthToken(String token) async {
     _authToken = token;
@@ -70,13 +128,10 @@ class OfflineSync {
         'auth_token', _encrypter.encrypt(token, iv: _iv).base64);
   }
 
-  // Method to set custom API endpoint
+  /// Deprecated: setApiEndpoint is now a no-op. Set apiEndpoint via OfflineSyncConfig instead.
+  @Deprecated('Set apiEndpoint via OfflineSyncConfig instead.')
   void setApiEndpoint(String endpoint) {
-    if (endpoint.isNotEmpty) {
-      _apiEndpoint = endpoint;
-    } else {
-      throw ArgumentError('API endpoint cannot be empty');
-    }
+    // No-op. Use OfflineSyncConfig.
   }
 
   Future<void> loadAuthToken() async {
@@ -113,18 +168,25 @@ class OfflineSync {
 
   @visibleForTesting
   Future<void> syncData() async {
+    syncStatus.value = SyncStatus.syncing;
+    lastError.value = null;
     final unsynced = await _database.query(
       'sync_queue',
       where: 'synced = ? AND retry_count < ?',
-      whereArgs: [0, _maxRetries],
+      whereArgs: [0, config.batchSize],
       orderBy: 'created_at ASC',
-      limit: _batchSize,
+      limit: config.batchSize,
     );
-
-    for (int i = 0; i < unsynced.length; i += _batchSize) {
-      final batch = unsynced.skip(i).take(_batchSize).toList();
+    int total = unsynced.length;
+    int processed = 0;
+    for (int i = 0; i < unsynced.length; i += config.batchSize) {
+      final batch = unsynced.skip(i).take(config.batchSize).toList();
       await _syncBatch(batch);
+      processed += batch.length;
+      syncProgress.value = total == 0 ? 1.0 : processed / total;
     }
+    syncStatus.value = SyncStatus.success;
+    syncProgress.value = 1.0;
   }
 
   Future<void> _syncBatch(List<Map<String, dynamic>> batch) async {
@@ -172,30 +234,35 @@ class OfflineSync {
       where: 'id = ?',
       whereArgs: [id],
     );
-
-    print('Sync failed for item $id: $error');
+    lastError.value = SyncErrorType.unknown;
+    syncStatus.value = SyncStatus.error;
+    config.logger?.call('Sync failed for item $id: $error');
+    // Optionally throw a custom exception
+    // throw OfflineSyncException(SyncErrorType.unknown, 'Sync failed for item $id: $error');
   }
 
   Future<http.Response> _sendToServer(
       String action, Map<String, dynamic> data) async {
-    if (_apiEndpoint.isEmpty) {
-      throw Exception('API endpoint not set');
+    if (apiEndpoint.isEmpty) {
+      lastError.value = SyncErrorType.server;
+      syncStatus.value = SyncStatus.error;
+      config.logger?.call('API endpoint not set');
+      throw OfflineSyncException(SyncErrorType.server, 'API endpoint not set');
     }
-
     final response = await _httpClient.post(
-      Uri.parse(_apiEndpoint),
+      Uri.parse(apiEndpoint),
       body: json.encode(data),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $_authToken',
       },
     );
-
     if (response.statusCode == 401) {
-      // Handle token expiration
-      throw Exception('Authentication failed');
+      lastError.value = SyncErrorType.auth;
+      syncStatus.value = SyncStatus.error;
+      config.logger?.call('Authentication failed');
+      throw OfflineSyncException(SyncErrorType.auth, 'Authentication failed');
     }
-
     return response;
   }
 
@@ -232,48 +299,76 @@ class OfflineSync {
   }
 
   Future<void> updateFromServer() async {
-    if (_apiEndpoint.isEmpty) {
-      throw Exception('API endpoint not set');
+    if (apiEndpoint.isEmpty) {
+      lastError.value = SyncErrorType.server;
+      syncStatus.value = SyncStatus.error;
+      config.logger?.call('API endpoint not set');
+      throw OfflineSyncException(SyncErrorType.server, 'API endpoint not set');
     }
     final response = await _httpClient.get(
-      Uri.parse(_apiEndpoint),
+      Uri.parse(apiEndpoint),
       headers: {
         'Authorization': 'Bearer $_authToken',
       },
     );
-
     if (response.statusCode == 200) {
       final updates = json.decode(response.body);
       await _applyServerUpdates(updates);
+      syncStatus.value = SyncStatus.success;
     } else if (response.statusCode == 401) {
-      throw Exception('Authentication failed');
+      lastError.value = SyncErrorType.auth;
+      syncStatus.value = SyncStatus.error;
+      config.logger?.call('Authentication failed');
+      throw OfflineSyncException(SyncErrorType.auth, 'Authentication failed');
     } else {
-      throw Exception('Failed to fetch updates from server');
+      lastError.value = SyncErrorType.server;
+      syncStatus.value = SyncStatus.error;
+      config.logger?.call('Failed to fetch updates from server');
+      throw OfflineSyncException(
+          SyncErrorType.server, 'Failed to fetch updates from server');
     }
   }
 
-  Future<void> _applyServerUpdates(List<Map<String, dynamic>> updates) async {
-    for (final update in updates) {
-      final id = update['id'];
-      final serverData = update['data'];
-      final serverTimestamp = update['timestamp'];
+  Future<void> _applyServerUpdates(dynamic updates) async {
+    // If updates is a List (e.g., from JSONPlaceholder), treat each as a record
+    if (updates is List) {
+      for (final item in updates) {
+        if (item is Map<String, dynamic> && item['id'] != null) {
+          final id = item['id'].toString();
+          await saveLocalData(id, item);
+        }
+      }
+      return;
+    }
+    // Otherwise, use the original logic for Map-based updates
+    if (updates is List<Map<String, dynamic>>) {
+      for (final update in updates) {
+        final id = update['id'];
+        final serverData = update['data'];
+        final serverTimestamp = update['timestamp'];
 
-      final localData = await readLocalData(id);
+        final localData = await readLocalData(id);
 
-      if (localData == null ||
-          serverTimestamp > (localData['last_updated'] as int)) {
-        await saveLocalData(id, serverData);
-      } else {
-        // Local data is newer, resolve conflict
-        final resolvedData = await _resolveConflict(id, localData, serverData);
-        await saveLocalData(id, resolvedData);
+        if (localData == null ||
+            serverTimestamp > (localData['last_updated'] as int)) {
+          await saveLocalData(id, serverData);
+        } else {
+          // Local data is newer, resolve conflict
+          final resolvedData =
+              await _resolveConflict(id, localData, serverData);
+          await saveLocalData(id, resolvedData);
+        }
       }
     }
   }
 
   Future<Map<String, dynamic>> _resolveConflict(String id,
       Map<String, dynamic> localData, Map<String, dynamic> serverData) async {
-    // This merges data, preferring local changes
+    // Use custom conflict resolver if provided
+    if (config.conflictResolver != null) {
+      return await config.conflictResolver!(id, localData, serverData);
+    }
+    // Default: merges data, preferring local changes
     final resolvedData = Map<String, dynamic>.from(serverData);
     localData.forEach((key, value) {
       if (value != serverData[key]) {
@@ -299,19 +394,6 @@ class OfflineSync {
   Future<void> dispose() async {
     await _connectivitySubscription?.cancel();
     await _database.close();
-  }
-
-  @visibleForTesting
-  OfflineSync.withDependencies({
-    required Database database,
-    required http.Client httpClient,
-    required Connectivity connectivity,
-    required SharedPreferences sharedPreferences,
-  }) {
-    _database = database;
-    _httpClient = httpClient;
-    _connectivity = connectivity;
-    _sharedPreferences = sharedPreferences;
   }
 
   @visibleForTesting
