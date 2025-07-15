@@ -55,20 +55,24 @@ class OfflineSync {
   final ValueNotifier<SyncStatus> syncStatus = ValueNotifier(SyncStatus.idle);
   final ValueNotifier<SyncErrorType?> lastError = ValueNotifier(null);
   final ValueNotifier<double> syncProgress = ValueNotifier(0.0); // 0.0 to 1.0
+  final String? dbPath; // Optional custom database path for testing
 
   static const int _currentSchemaVersion = 2;
   static const _encryptionKeyPrefsKey = 'offline_sync_encryption_key';
 
   OfflineSync({
     required this.config,
+    this.dbPath, // Allow custom DB path
     Connectivity? connectivity,
     http.Client? httpClient,
   })  : _connectivity = connectivity ?? Connectivity(),
         _httpClient = httpClient ?? http.Client();
 
   Future<void> initialize() async {
+    final dbPathToUse =
+        dbPath ?? join(await getDatabasesPath(), 'offline_sync.db');
     _database = await openDatabase(
-      join(await getDatabasesPath(), 'offline_sync.db'),
+      dbPathToUse,
       onCreate: (db, version) async {
         await db.execute(
           'CREATE TABLE sync_queue(id INTEGER PRIMARY KEY, action TEXT, data TEXT, synced INTEGER, retry_count INTEGER, created_at INTEGER)',
@@ -192,13 +196,19 @@ class OfflineSync {
   Future<void> _syncBatch(List<Map<String, dynamic>> batch) async {
     final List<Map<String, dynamic>> batchData = [];
     for (final item in batch) {
-      final decryptedData =
-          _encrypter.decrypt64(item['data'] as String, iv: _iv);
-      batchData.add({
-        'id': item['id'],
-        'action': item['action'],
-        'data': json.decode(decryptedData),
-      });
+      try {
+        final decryptedData =
+            _encrypter.decrypt64(item['data'] as String, iv: _iv);
+        batchData.add({
+          'id': item['id'],
+          'action': item['action'],
+          'data': json.decode(decryptedData),
+        });
+      } catch (e) {
+        // Wrap decryption errors
+        throw OfflineSyncException(
+            SyncErrorType.unknown, 'Decryption failed: $e');
+      }
     }
 
     try {
@@ -290,9 +300,15 @@ class OfflineSync {
     );
 
     if (result.isNotEmpty) {
-      final encryptedData = result.first['data'] as String;
-      final decryptedData = _encrypter.decrypt64(encryptedData, iv: _iv);
-      return json.decode(decryptedData);
+      try {
+        final encryptedData = result.first['data'] as String;
+        final decryptedData = _encrypter.decrypt64(encryptedData, iv: _iv);
+        return json.decode(decryptedData);
+      } catch (e) {
+        // Wrap decryption errors
+        throw OfflineSyncException(
+            SyncErrorType.unknown, 'Decryption failed: $e');
+      }
     }
 
     return null;

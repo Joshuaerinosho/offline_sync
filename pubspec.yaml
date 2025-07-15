@@ -24,3 +24,4 @@ dev_dependencies:
   mockito: ^5.3.2
   build_runner: ^2.3.3
   test: ^1.21.1
+  sqflite_common_ffi: ^2.3.0

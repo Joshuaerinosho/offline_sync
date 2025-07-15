@@ -6,27 +6,65 @@ import 'package:sqflite/sqflite.dart';
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // For FFI database in tests
 
 import 'offline_sync_test.mocks.dart' as mock;
 
-@GenerateMocks(
-    [Database, http.Client, Connectivity, SharedPreferences, OfflineSync])
+@GenerateMocks([Database, http.Client, Connectivity, SharedPreferences])
 void main() {
+  // Initialize FFI for unit tests so sqflite works in Dart VM
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late mock.MockOfflineSync offlineSync;
+  late OfflineSync offlineSync;
   late mock.MockDatabase mockDatabase;
-  // late mock.MockClient mockHttpClient;
-  // late mock.MockConnectivity mockConnectivity;
-  // late mock.MockSharedPreferences mockSharedPreferences;
+  late mock.MockClient mockHttpClient;
+  late mock.MockConnectivity mockConnectivity;
+  late mock.MockSharedPreferences mockSharedPreferences;
+  late List<String> loggerMessages;
 
   setUp(() async {
-    offlineSync = mock.MockOfflineSync();
     mockDatabase = mock.MockDatabase();
-    // mockHttpClient = mock.MockClient();
-    // mockConnectivity = mock.MockConnectivity();
-    // mockSharedPreferences = mock.MockSharedPreferences();
+    mockHttpClient = mock.MockClient();
+    mockConnectivity = mock.MockConnectivity();
+    mockSharedPreferences = mock.MockSharedPreferences();
+    loggerMessages = [];
 
+    // Stub connectivity stream to avoid MissingStubError
+    when(mockConnectivity.onConnectivityChanged)
+        .thenAnswer((_) => Stream.value([ConnectivityResult.wifi]));
+
+    // Set up SharedPreferences mock for encryption key
+    when(mockSharedPreferences.getString(any)).thenReturn(null);
+    when(mockSharedPreferences.setString(any, any))
+        .thenAnswer((_) async => true);
+    SharedPreferences.setMockInitialValues({});
+
+    // Always stub HTTP GET/POST to return a valid response by default
+    when(mockHttpClient.get(any, headers: anyNamed('headers')))
+        .thenAnswer((_) async => http.Response('[]', 200));
+    when(mockHttpClient.post(any,
+            body: anyNamed('body'), headers: anyNamed('headers')))
+        .thenAnswer((_) async => http.Response('{"results":[]}', 200));
+
+    // Use a unique in-memory database for each test (sqflite_ffi supports this)
+    // This is handled by default with sqflite_ffi if you use ':memory:' as the path
+    // But since OfflineSync uses getDatabasesPath, you may want to clear the DB file if needed
+    // For now, rely on sqflite_ffi's isolation per test run
+
+    offlineSync = OfflineSync(
+      config: OfflineSyncConfig(
+        apiEndpoint: 'https://example.com/api',
+        logger: (msg) => loggerMessages.add(msg),
+        batchSize: 2,
+      ),
+      httpClient: mockHttpClient,
+      connectivity: mockConnectivity,
+      dbPath: ':memory:', // Use in-memory DB for tests
+    );
     await offlineSync.initialize();
   });
 
@@ -36,26 +74,19 @@ void main() {
       'email': 'john@example.com',
       'age': 30,
     };
-
-    when(offlineSync.readLocalData(any)).thenAnswer(
-      (_) => Future.value(data),
-    );
-
-    when(mockDatabase.query(any)).thenAnswer((_) => Future.value([data]));
-
-    // Ensure offline sync is initialized
-    verify(offlineSync.initialize()).called(1);
-
     await offlineSync.saveLocalData('user_1', data);
-
     final userData = await offlineSync.readLocalData('user_1');
-
     expect(userData, equals(data));
-
-    final databaseQuery = await mockDatabase.query('sync_queue');
-
-    expect(databaseQuery.length, equals(1));
   });
 
-//TODO: ADD MORE TEST CASES HERE
+  test('Automatic encryption key generation and persistence', () async {
+    // Should generate and persist a key if not provided
+    final key = offlineSync.config.encryptionKey;
+    expect(key, isNull); // Not provided
+    // The key should be generated and stored in SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final storedKey = prefs.getString('offline_sync_encryption_key');
+    expect(storedKey, isNotNull);
+    expect(storedKey!.length, 32);
+  });
 }
