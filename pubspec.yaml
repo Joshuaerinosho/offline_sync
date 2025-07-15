@@ -25,3 +25,5 @@ dev_dependencies:
   build_runner: ^2.3.3
   test: ^1.21.1
   sqflite_common_ffi: ^2.3.0
+  connectivity_plus_platform_interface: any
+  sqflite_common: any
