@@ -17,7 +17,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  offline_sync: ^0.0.1
+  offline_sync: ^1.0.0
 ```
 
 ## Usage
