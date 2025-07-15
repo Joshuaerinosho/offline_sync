@@ -6,7 +6,6 @@ import 'package:sqflite/sqflite.dart';
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // For FFI database in tests
 
 import 'offline_sync_test.mocks.dart' as mock;
@@ -20,14 +19,12 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late OfflineSync offlineSync;
-  late mock.MockDatabase mockDatabase;
   late mock.MockClient mockHttpClient;
   late mock.MockConnectivity mockConnectivity;
   late mock.MockSharedPreferences mockSharedPreferences;
   late List<String> loggerMessages;
 
   setUp(() async {
-    mockDatabase = mock.MockDatabase();
     mockHttpClient = mock.MockClient();
     mockConnectivity = mock.MockConnectivity();
     mockSharedPreferences = mock.MockSharedPreferences();
